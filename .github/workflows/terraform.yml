@@ -1,0 +1,147 @@
+name: terraform
+
+on:
+  pull_request:
+    branches: ["staging", "main"]
+    paths: ["terraform/**"]
+  push:
+    branches: ["staging", "main"]
+    paths: ["terraform/**"]
+
+# No workflow-level permissions block — each job requests only what it
+# needs. `lint` never requests id-token, so it cannot authenticate to
+# Azure even if the workflow file is modified on an unreviewed branch.
+
+jobs:
+  # Runs on every PR targeting either branch, zero Azure credentials.
+  lint:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: fmt check (whole repo)
+        run: terraform fmt -check -recursive terraform/
+      - name: validate each root module
+        run: |
+          for dir in terraform/core terraform/envs/staging terraform/envs/production; do
+            echo "::group::validate $dir"
+            (cd "$dir" && terraform init -backend=false && terraform validate)
+            echo "::endgroup::"
+          done
+      - name: Static security scan (tfsec)
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: terraform
+
+  # ---- Promotion stage 1: feature/* -> staging -------------------------
+
+  plan-staging:
+    if: github.event_name == 'pull_request' && github.base_ref == 'staging'
+    runs-on: ubuntu-latest
+    needs: lint
+    environment: plan-preview-staging   # requires reviewer approval before token is minted
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: terraform/envs/staging
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: true
+      TF_VAR_subscription_id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      TF_VAR_budget_alert_emails: ${{ secrets.BUDGET_ALERT_EMAILS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform init
+      - run: terraform plan -no-color
+
+  apply-staging:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    environment: staging   # optional reviewer gate; usually auto-approved for staging
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: terraform/envs/staging
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: true
+      TF_VAR_subscription_id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      TF_VAR_budget_alert_emails: ${{ secrets.BUDGET_ALERT_EMAILS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform init
+      - run: terraform apply -auto-approve
+
+  # ---- Promotion stage 2: staging -> main (production + core) ---------
+
+  plan-production:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    needs: lint
+    environment: plan-preview-production   # stricter reviewer rule than plan-preview-staging
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      matrix:
+        root: [core, "envs/production"]
+    defaults:
+      run:
+        working-directory: terraform/${{ matrix.root }}
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: true
+      TF_VAR_subscription_id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      TF_VAR_terraform_auth_object_id: ${{ secrets.TERRAFORM_AUTH_OBJECT_ID }}
+      TF_VAR_budget_alert_emails: ${{ secrets.BUDGET_ALERT_EMAILS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform init
+      - run: terraform plan -no-color
+
+  apply-production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production   # required reviewers — the strictest gate in this pipeline
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      # core first: envs/production may reference core's outputs via
+      # terraform_remote_state, so core's apply must land first. Matrix
+      # jobs run in parallel by default — max-parallel keeps this ordered.
+      max-parallel: 1
+      matrix:
+        root: [core, "envs/production"]
+    defaults:
+      run:
+        working-directory: terraform/${{ matrix.root }}
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: true
+      TF_VAR_subscription_id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      TF_VAR_terraform_auth_object_id: ${{ secrets.TERRAFORM_AUTH_OBJECT_ID }}
+      TF_VAR_budget_alert_emails: ${{ secrets.BUDGET_ALERT_EMAILS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform init
+      - run: terraform apply -auto-approve

@@ -1,0 +1,7 @@
+subscription_id           = "00000000-0000-0000-0000-000000000000"
+location                  = "eastus"
+environment                = "shared"
+budget_amount              = 50
+budget_alert_emails        = ["you@example.com"]
+terraform_auth_object_id   = "00000000-0000-0000-0000-000000000000" # from bootstrap.sh output
+owner_tag                  = "kevoh"
