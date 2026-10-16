@@ -1,7 +1,15 @@
+locals {
+  tags = {
+    environment = var.environment
+    managed_by  = "terraform"
+    owner       = var.owner_tag
+  }
+}
+
 resource "azurerm_resource_group" "monitoring" {
   name     = "rg-monitoring-baseline"
   location = var.location
-  tags     = { environment = var.environment, managed_by = "terraform" }
+  tags     = local.tags
 }
 
 resource "azurerm_log_analytics_workspace" "core" {
@@ -20,7 +28,7 @@ resource "azurerm_log_analytics_workspace" "core" {
   # it only protects you if something else starts sending high-volume logs.
   daily_quota_gb = var.log_analytics_daily_quota_gb
 
-  tags = { environment = var.environment, managed_by = "terraform" }
+  tags = local.tags
 }
 
 # Subscription Activity Log -> Log Analytics. This is close to a
@@ -52,6 +60,7 @@ resource "azurerm_monitor_action_group" "core" {
   name                = "ag-core-alerts"
   resource_group_name = azurerm_resource_group.monitoring.name
   short_name          = "coreops"
+  tags                = local.tags
 
   dynamic "email_receiver" {
     for_each = var.alert_emails

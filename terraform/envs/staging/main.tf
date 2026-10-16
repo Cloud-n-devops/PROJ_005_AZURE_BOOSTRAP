@@ -6,7 +6,7 @@
 
 resource "azurerm_resource_group" "staging" {
   name     = "rg-staging"
-  location = var.location
+  location = data.terraform_remote_state.core.outputs.location
   tags = {
     environment = "staging"
     managed_by  = "terraform"

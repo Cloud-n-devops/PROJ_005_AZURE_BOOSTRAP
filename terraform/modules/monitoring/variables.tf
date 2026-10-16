@@ -22,3 +22,8 @@ variable "log_analytics_daily_quota_gb" {
   type        = number
   default     = 0.2 # well under the ~5GB/month free Analytics Logs allowance even at daily cadence
 }
+
+variable "owner_tag" {
+  description = "Value of the 'owner' tag. Required on every resource by the governance module's Deny policy."
+  type        = string
+}

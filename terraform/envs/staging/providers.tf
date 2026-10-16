@@ -30,7 +30,8 @@ data "terraform_remote_state" "core" {
   config = {
     resource_group_name  = "rg-terraform-state"
     storage_account_name = "sttfstate29339" # same value as backend.tf above
-    container_name        = "tfstate"
-    key                    = "core.tfstate"
+    container_name       = "tfstate"
+    key                  = "core.tfstate"
+    use_azuread_auth     = true
   }
 }

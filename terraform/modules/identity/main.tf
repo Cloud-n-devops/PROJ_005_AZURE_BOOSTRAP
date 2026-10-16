@@ -4,9 +4,10 @@
 # scoped role assignments and federated credentials for terraform_auth
 # are managed here, as code, so changes are reviewable via PR.
 
-data "azuread_service_principal" "terraform_auth" {
-  object_id = var.terraform_auth_object_id
-}
+# A data "azuread_service_principal" lookup used to live here. It needs
+# Microsoft Graph read permission, which terraform_auth deliberately does
+# not have in CI, so it would fail every pipeline plan. The object ID is
+# already available as var.terraform_auth_object_id.
 
 # bootstrap.sh already created the branch- and environment-scoped
 # federated credentials this repo uses (branch:staging, branch:main,
@@ -21,13 +22,13 @@ data "azuread_service_principal" "terraform_auth" {
 # resource "azurerm_role_assignment" "terraform_auth_staging_scoped" {
 #   scope                = "/subscriptions/${var.subscription_id}/resourceGroups/rg-staging"
 #   role_definition_name = "Contributor"
-#   principal_id         = data.azuread_service_principal.terraform_auth.object_id
+#   principal_id         = var.terraform_auth_object_id
 # }
 #
 # resource "azurerm_role_assignment" "terraform_auth_production_scoped" {
 #   scope                = "/subscriptions/${var.subscription_id}/resourceGroups/rg-production"
 #   role_definition_name = "Contributor"
-#   principal_id         = data.azuread_service_principal.terraform_auth.object_id
+#   principal_id         = var.terraform_auth_object_id
 # }
 #
 # For real isolation (a compromised staging token cannot reach

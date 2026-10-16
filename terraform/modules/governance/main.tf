@@ -11,14 +11,14 @@ resource "azurerm_subscription_policy_assignment" "security_benchmark" {
   name                 = "security-benchmark-baseline"
   policy_definition_id = data.azurerm_policy_set_definition.security_benchmark.id
   subscription_id      = data.azurerm_subscription.current.id
-  location             = "eastus" # required for assignments with a managed identity
+  location             = var.location # required for assignments with a managed identity
   identity {
     type = "SystemAssigned"
   }
 
-  # Audit-only by default — flip enforcement_mode once you've reviewed
+  # Audit-only by default — flip to true once you've reviewed
   # findings and are ready to actually block non-compliant deployments.
-  enforcement_mode = "DoNotEnforce"
+  enforce = false
 }
 
 # Built-in policy: require a specific tag on all resources. Cheap,
